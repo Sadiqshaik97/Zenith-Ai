@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { 
   Brain, 
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function TodayPage() {
+  const navigate = useNavigate();
   const [nlpText, setNlpText] = useState('');
   const [showLogModal, setShowLogModal] = useState(false);
   
@@ -23,11 +25,13 @@ export default function TodayPage() {
   const habits = useStore((state) => state.habits);
   const events = useStore((state) => state.events);
   const wellness = useStore((state) => state.wellnessMetrics);
+  const apiKey = useStore((state) => state.geminiApiKey);
   
   const addTask = useStore((state) => state.addTask);
   const toggleTask = useStore((state) => state.toggleTask);
   const toggleHabit = useStore((state) => state.toggleHabit);
   const updateWellnessMetrics = useStore((state) => state.updateWellnessMetrics);
+  const sendMessage = useStore((state) => state.sendMessage);
 
   // Pomodoro Live Timer State
   const [timeLeft, setTimeLeft] = useState(1500); // 25 minutes = 1500 seconds
@@ -133,19 +137,31 @@ export default function TodayPage() {
     e.preventDefault();
     if (!nlpText.trim()) return;
     
-    // Quick Add NLP
-    const priority = nlpText.toLowerCase().includes('high') ? 'High' : 'Medium';
-    addTask({
-      title: nlpText,
-      description: 'Quick captured via dashboard nlp bar.',
-      deadline: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      time: '12:00',
-      priority,
-      status: 'Todo',
-      effort: 2,
-      tags: ['QuickCapture'],
-      subtasks: []
-    });
+    const lower = nlpText.trim().toLowerCase();
+    const commandKeywords = ['add', 'create', 'new', 'schedule', 'plan', 'complete', 'done', 'delete', 'remove', 'remind', 'optimize', 'solve'];
+    const isCommand = commandKeywords.some(kw => lower.startsWith(kw) || lower.includes(' ' + kw + ' '));
+
+    if (apiKey && apiKey !== 'mock_key' && isCommand) {
+      // Redirect to Aura Assistant
+      navigate('/assistant');
+      setTimeout(() => {
+        sendMessage(nlpText);
+      }, 150);
+    } else {
+      // Quick Add NLP
+      const priority = nlpText.toLowerCase().includes('high') ? 'High' : 'Medium';
+      addTask({
+        title: nlpText,
+        description: 'Quick captured via dashboard nlp bar.',
+        deadline: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        time: '12:00',
+        priority,
+        status: 'Todo',
+        effort: 2,
+        tags: ['QuickCapture'],
+        subtasks: []
+      });
+    }
     setNlpText('');
   };
 

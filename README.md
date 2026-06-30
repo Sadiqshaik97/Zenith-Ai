@@ -170,5 +170,31 @@ GOOGLE_CLIENT_ID=your_google_oauth_client_id
 
 ---
 
+## 🌐 Deploying to Production (Real Life)
+
+To run Zenith AI fully online in production, you can deploy both the frontend and backend using free hosting providers:
+
+### 1. Backend Server Deployment (e.g., Render or Railway)
+1. Sign up on [Render](https://render.com/) or [Railway](https://railway.app/).
+2. Create a new **Web Service** and link it to your GitHub repository `https://github.com/Sadiqshaik97/Zenith-Ai`.
+3. Set the **Root Directory** to `backend`.
+4. Configure the build and start commands:
+   * **Build Command**: `npm install`
+   * **Start Command**: `node server.js`
+5. Configure Environment Variables in the service settings:
+   * `PORT=5000`
+   * `JWT_SECRET=your_production_secret`
+   * `GEMINI_API_KEY=your_gemini_api_key`
+   * *(Optional)* Upload `firebase-service-account.json` to the backend directory, or let the server auto-fallback to the local JSON database file.
+6. Once deployed, note down the live backend URL (e.g. `https://zenith-backend.onrender.com`).
+
+### 2. Frontend Deployment (GitHub Pages)
+1. Go to your repository settings on GitHub under **Settings > Pages**.
+2. Under **Build and deployment**, set the **Source** to **GitHub Actions**.
+3. Push any commit to the `main` branch. The included GitHub Actions workflow will build the static React frontend and deploy it to `https://Sadiqshaik97.github.io/Zenith-Ai/` automatically!
+4. To link the frontend with your live backend, modify `.github/workflows/deploy.yml` and replace the `VITE_API_URL` env variable with your live backend URL (e.g. `https://zenith-backend.onrender.com`).
+
+---
+
 ## 🧑‍💻 Creator & License
 Created as an intelligent agentic productivity ecosystem. Feel free to explore the code, customize the scheduler heuristics, or extend Aura's AI features!

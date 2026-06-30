@@ -251,7 +251,7 @@ const defaultWellnessMetrics: WellnessMetrics = {
   focusTargetMinutes: 240
 };
 
-const API_URL = 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 async function apiCall(endpoint: string, method = 'GET', body: any = null) {
   const token = localStorage.getItem('zenith_token');

@@ -59,11 +59,15 @@ export default function AssistantPage() {
         const transcript = event.results[0][0].transcript;
         setChatInput(transcript);
         setIsListening(false);
+        if (transcript.trim()) {
+          sendMessage(transcript);
+          setChatInput('');
+        }
       };
 
       setRecognition(rec);
     }
-  }, []);
+  }, [sendMessage]);
 
   const toggleMic = () => {
     if (!recognition) {
