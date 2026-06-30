@@ -740,7 +740,7 @@ export const useStore = create<StoreState>()(
                 `🚨 **Priority:** ${parsedTask.priority} (Priority Score: **${priorityScore}**)\n` +
                 `📅 **Deadline:** ${parsedTask.deadline}\n` +
                 `⏳ **Estimated Effort:** ${parsedTask.effort} hour(s)\n\n` +
-                `*(Offline NLP active. Enter an API key at the top to activate the full AI coach).*`;
+                `*(Offline NLP active. Please ensure the backend server is running to activate the full AI assistant).*`;
             } else {
               const incompleteCount = useStore.getState().tasks.filter((t) => t.status !== 'Done').length;
               replyText = limitPrefix + `Hello! I am Aura, your AI daily planner companion. Currently you have ${incompleteCount} incomplete tasks. How can I help you organize your daily goals today?`;

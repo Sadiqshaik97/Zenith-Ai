@@ -135,18 +135,24 @@ export default function AssistantPage() {
             <div className="flex-1 flex flex-col gap-1 w-full">
               <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <span>Google Gemini API Key</span>
-                <a 
-                  href="https://aistudio.google.com/" 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="text-purple-600 hover:underline text-[9px] font-extrabold normal-case"
-                >
-                  (Get a Free Key ↗)
-                </a>
+                {apiKey ? (
+                  <span className="text-emerald-600 font-extrabold text-[9px] normal-case bg-emerald-50 px-1.5 py-0.5 rounded">
+                    ✓ Auto-configured by System
+                  </span>
+                ) : (
+                  <a 
+                    href="https://aistudio.google.com/" 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="text-purple-600 hover:underline text-[9px] font-extrabold normal-case"
+                  >
+                    (Get a Free Key ↗)
+                  </a>
+                )}
               </label>
               <input 
                 type="password"
-                placeholder="AIzaSy..."
+                placeholder={apiKey ? "•••••••••••••••• (System Managed)" : "AIzaSy..."}
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500 font-mono"
