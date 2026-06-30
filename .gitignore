@@ -27,3 +27,7 @@ firebase-service-account.json
 backend/firebase-service-account.json
 local-db.json
 backend/local-db.json
+.venv/
+*.pdf
+generate_pdf.py
+
