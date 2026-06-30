@@ -188,7 +188,7 @@ export default function TopBar({ onToggleMenu }: TopBarProps) {
   const urgentTasks = tasks.filter((t) => {
     if (t.status === 'Done') return false;
     const isHigh = t.priority === 'High';
-    const isOverdue = new Date(t.deadline) < new Date() && t.status !== 'Done';
+    const isOverdue = new Date(t.deadline) < new Date();
     return isHigh || isOverdue;
   });
 
