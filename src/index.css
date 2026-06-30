@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  font-family: 'Outfit', sans-serif;
+}
+
+body {
+  background-color: #eef0f2;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(22, 22, 22, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 22, 22, 0.25);
+}
+
+/* Animation utilities */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(210, 252, 84, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(210, 252, 84, 0.45);
+  }
+}
+
+.voice-orb-active {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
