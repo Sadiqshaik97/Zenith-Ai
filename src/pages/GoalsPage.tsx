@@ -1,15 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store/useStore';
-import { 
-  Trophy, 
-  Flame, 
-  Plus, 
-  Award, 
-  TrendingUp, 
-  Target,
-  Trash2,
-  Check
-} from 'lucide-react';
+import { Trophy, Plus, Target, Trash2 } from 'lucide-react';
 
 export default function GoalsPage() {
   const [showAddGoalForm, setShowAddGoalForm] = useState(false);
@@ -18,23 +9,9 @@ export default function GoalsPage() {
   const [newGoalTargetDate, setNewGoalTargetDate] = useState('2026-07-31');
 
   const goals = useStore((state) => state.goals);
-  const habits = useStore((state) => state.habits);
   
   const addGoal = useStore((state) => state.addGoal);
   const deleteGoal = useStore((state) => state.deleteGoal);
-  const addHabit = useStore((state) => state.addHabit);
-  const deleteHabit = useStore((state) => state.deleteHabit);
-  const toggleHabit = useStore((state) => state.toggleHabit);
-
-  const handleCreateHabit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const habitName = formData.get('habitName') as string;
-    if (!habitName || !habitName.trim()) return;
-
-    addHabit(habitName.trim());
-    e.currentTarget.reset();
-  };
 
   const handleCreateGoal = (e: React.FormEvent) => {
     e.preventDefault();

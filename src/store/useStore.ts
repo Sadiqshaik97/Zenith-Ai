@@ -61,6 +61,8 @@ interface StoreState {
   logout: () => void;
   updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
   initializeData: () => Promise<void>;
+  isUpgradeModalOpen: boolean;
+  setUpgradeModalOpen: (open: boolean) => void;
 }
 
 // Dynamic Prioritization Algorithm
@@ -299,6 +301,8 @@ export const useStore = create<StoreState>()(
       geminiApiKey: '',
       isGenerating: false,
       activeStreamTimer: null,
+      isUpgradeModalOpen: false,
+      setUpgradeModalOpen: (open) => set({ isUpgradeModalOpen: open }),
 
       // Tasks Actions
       addTask: async (task) => {
@@ -861,7 +865,7 @@ If the user asks to perform operations (like adding a task, completing/marking a
 When scheduling or planning the week, you MUST first print out a beautiful day-by-day markdown schedule table or list proposing the allocation of the user's tasks to the weekdays, and then append the RUN_SCHEDULER action. Do not just say you are running the scheduler — print the exact schedule data first so it looks like a real AI assistant planner. Be encouraging, concise, and professional. Do not use markdown inside the action block.`;
 
             const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentApiKey}`,
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentApiKey}`,
               {
                 method: 'POST',
                 headers: {

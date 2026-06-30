@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { 
-  Sparkles, 
   Brain, 
   Clock, 
   Mic, 
@@ -128,35 +127,7 @@ export default function TodayPage() {
     return eventDate.toDateString() === today.toDateString();
   }).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-  // Dynamic Briefing based on actual data
-  const getDynamicBriefing = () => {
-    const incompleteTasksCount = todayTasks.length;
-    const highPrio = todayTasks.find(t => t.priority === 'High');
-    
-    if (incompleteTasksCount === 0) {
-      return {
-        title: "AI Briefing: All Clear & Balanced",
-        desc: "You have no pending tasks in your queue today. Start the Pomodoro focus timer to log deep work session progress!",
-        actionable: false
-      };
-    }
-    
-    if (highPrio) {
-      return {
-        title: `AI Briefing: High Overlap Risk Detected`,
-        desc: `Your high priority task "${highPrio.title}" is pending. We recommend running the AI Auto-Schedule to allocate optimal deep work blocks and resolve conflicts.`,
-        actionable: true
-      };
-    }
-    
-    return {
-      title: "AI Briefing: Stack Ready for Allocation",
-      desc: `You have ${incompleteTasksCount} pending task${incompleteTasksCount > 1 ? 's' : ''} in your queue. Resolve overlaps to map focus blocks to your circadian energy curve.`,
-      actionable: true
-    };
-  };
 
-  const briefing = getDynamicBriefing();
 
   const handleQuickAdd = (e: React.FormEvent) => {
     e.preventDefault();
