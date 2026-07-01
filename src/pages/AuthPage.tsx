@@ -12,6 +12,7 @@ export default function AuthPage() {
 
   const login = useStore((state) => state.login);
   const signUp = useStore((state) => state.signUp);
+  const isDemoMode = useStore((state) => state.isDemoMode);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +128,12 @@ export default function AuthPage() {
               <p className="text-[11px] text-red-500 font-bold bg-red-50 border border-red-100 rounded-xl p-3 leading-snug">
                 {error}
               </p>
+            )}
+
+            {isDemoMode && (
+              <div className="bg-[#fff9db] border border-[#ffe066] text-[#856404] p-3 rounded-2xl text-[11px] leading-snug font-bold">
+                ⚠️ Backend server offline. Running in Demo Mode (local database fallback). You can log in using <code className="bg-[#fff3bf] px-1.5 py-0.5 rounded text-[10px]">demo@example.com</code> / <code className="bg-[#fff3bf] px-1.5 py-0.5 rounded text-[10px]">password123</code> or Sign Up!
+              </div>
             )}
 
             {/* Input Form */}

@@ -17,6 +17,7 @@ interface StoreState {
   user: UserProfile | null;
   isAuthenticated: boolean;
   token: string | null;
+  isDemoMode: boolean;
   
   // Tasks Actions
   addTask: (task: Omit<Task, 'id' | 'priorityScore'>) => Promise<void>;
@@ -253,7 +254,218 @@ const defaultWellnessMetrics: WellnessMetrics = {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-async function apiCall(endpoint: string, method = 'GET', body: any = null) {
+function handleClientFallback(endpoint: string, method: string, body: any): any {
+  const cleanEndpoint = endpoint.split('?')[0];
+
+  if (cleanEndpoint === '/api/auth/signup') {
+    const users = JSON.parse(localStorage.getItem('zenith_mock_users') || '{}');
+    const { email, password, name } = body;
+    const emailClean = email.trim().toLowerCase();
+    if (users[emailClean]) {
+      throw new Error('An account with this email already exists.');
+    }
+    const userId = 'user_mock_' + Date.now();
+    const userProfile = {
+      uid: userId,
+      name: name.trim(),
+      email: emailClean,
+      avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name.trim())}`,
+      tier: 'Free',
+      createdAt: new Date().toISOString()
+    };
+    users[emailClean] = { ...userProfile, password };
+    localStorage.setItem('zenith_mock_users', JSON.stringify(users));
+    return { token: 'mock_token_' + userId, user: userProfile };
+  }
+
+  if (cleanEndpoint === '/api/auth/login') {
+    const users = JSON.parse(localStorage.getItem('zenith_mock_users') || '{}');
+    const { email, password } = body;
+    const emailClean = email.trim().toLowerCase();
+    
+    if (emailClean === 'demo@example.com' || emailClean === 'test@example.com') {
+      const userId = 'user_mock_demo';
+      const userProfile = {
+        uid: userId,
+        name: 'Demo User',
+        email: emailClean,
+        avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=Demo`,
+        tier: 'Free',
+        createdAt: new Date().toISOString()
+      };
+      return { token: 'mock_token_' + userId, user: userProfile };
+    }
+
+    const user = users[emailClean];
+    if (!user || user.password !== password) {
+      throw new Error('Invalid credentials in Demo Mode. (Try demo@example.com / password123 or Sign Up!)');
+    }
+    const { password: _, ...userProfile } = user;
+    return { token: 'mock_token_' + user.uid, user: userProfile };
+  }
+
+  if (cleanEndpoint === '/api/auth/google') {
+    const name = body.name || 'Google User';
+    const email = body.email || 'google@example.com';
+    const userId = 'user_mock_google_' + Date.now();
+    const userProfile = {
+      uid: userId,
+      name,
+      email,
+      avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name)}`,
+      tier: 'Free',
+      createdAt: new Date().toISOString()
+    };
+    return { token: 'mock_token_' + userId, user: userProfile };
+  }
+
+  if (cleanEndpoint === '/api/init') {
+    const tasks = JSON.parse(localStorage.getItem('zenith_mock_tasks') || '[]');
+    const goals = JSON.parse(localStorage.getItem('zenith_mock_goals') || '[]');
+    const habits = JSON.parse(localStorage.getItem('zenith_mock_habits') || '[]');
+    const events = JSON.parse(localStorage.getItem('zenith_mock_events') || '[]');
+    const messages = JSON.parse(localStorage.getItem('zenith_mock_messages') || '[]');
+    const wellnessMetrics = JSON.parse(localStorage.getItem('zenith_mock_wellness') || 'null');
+    return {
+      tasks,
+      goals,
+      habits,
+      events,
+      messages,
+      wellnessMetrics: wellnessMetrics || { focusTimeMinutes: 0, focusTargetMinutes: 240 },
+      geminiApiKey: localStorage.getItem('zenith_gemini_key') || ''
+    };
+  }
+
+  if (cleanEndpoint === '/api/tasks') {
+    if (method === 'POST') {
+      const tasks = JSON.parse(localStorage.getItem('zenith_mock_tasks') || '[]');
+      tasks.unshift(body);
+      localStorage.setItem('zenith_mock_tasks', JSON.stringify(tasks));
+      return body;
+    }
+  }
+
+  if (cleanEndpoint.startsWith('/api/tasks/')) {
+    const taskId = cleanEndpoint.replace('/api/tasks/', '');
+    let tasks = JSON.parse(localStorage.getItem('zenith_mock_tasks') || '[]');
+    if (method === 'PUT') {
+      tasks = tasks.map((t: any) => t.id === taskId ? { ...t, ...body } : t);
+      localStorage.setItem('zenith_mock_tasks', JSON.stringify(tasks));
+      return { ...body, id: taskId };
+    }
+    if (method === 'DELETE') {
+      tasks = tasks.filter((t: any) => t.id !== taskId);
+      localStorage.setItem('zenith_mock_tasks', JSON.stringify(tasks));
+      return { success: true };
+    }
+  }
+
+  if (cleanEndpoint === '/api/goals') {
+    if (method === 'POST') {
+      const goals = JSON.parse(localStorage.getItem('zenith_mock_goals') || '[]');
+      goals.unshift(body);
+      localStorage.setItem('zenith_mock_goals', JSON.stringify(goals));
+      return body;
+    }
+  }
+
+  if (cleanEndpoint.startsWith('/api/goals/')) {
+    const goalId = cleanEndpoint.replace('/api/goals/', '');
+    let goals = JSON.parse(localStorage.getItem('zenith_mock_goals') || '[]');
+    if (method === 'PUT') {
+      goals = goals.map((g: any) => g.id === goalId ? { ...g, ...body } : g);
+      localStorage.setItem('zenith_mock_goals', JSON.stringify(goals));
+      return { ...body, id: goalId };
+    }
+    if (method === 'DELETE') {
+      goals = goals.filter((g: any) => g.id !== goalId);
+      localStorage.setItem('zenith_mock_goals', JSON.stringify(goals));
+      return { success: true };
+    }
+  }
+
+  if (cleanEndpoint === '/api/habits') {
+    if (method === 'POST') {
+      const habits = JSON.parse(localStorage.getItem('zenith_mock_habits') || '[]');
+      habits.unshift(body);
+      localStorage.setItem('zenith_mock_habits', JSON.stringify(habits));
+      return body;
+    }
+  }
+
+  if (cleanEndpoint.startsWith('/api/habits/')) {
+    const habitId = cleanEndpoint.replace('/api/habits/', '');
+    let habits = JSON.parse(localStorage.getItem('zenith_mock_habits') || '[]');
+    if (method === 'PUT') {
+      habits = habits.map((h: any) => h.id === habitId ? { ...h, ...body } : h);
+      localStorage.setItem('zenith_mock_habits', JSON.stringify(habits));
+      return { ...body, id: habitId };
+    }
+    if (method === 'DELETE') {
+      habits = habits.filter((h: any) => h.id !== habitId);
+      localStorage.setItem('zenith_mock_habits', JSON.stringify(habits));
+      return { success: true };
+    }
+  }
+
+  if (cleanEndpoint === '/api/events') {
+    if (method === 'POST') {
+      const events = JSON.parse(localStorage.getItem('zenith_mock_events') || '[]');
+      events.push(body);
+      localStorage.setItem('zenith_mock_events', JSON.stringify(events));
+      return body;
+    }
+  }
+
+  if (cleanEndpoint.startsWith('/api/events/')) {
+    const eventId = cleanEndpoint.replace('/api/events/', '');
+    let events = JSON.parse(localStorage.getItem('zenith_mock_events') || '[]');
+    if (method === 'PUT') {
+      events = events.map((e: any) => e.id === eventId ? { ...e, ...body } : e);
+      localStorage.setItem('zenith_mock_events', JSON.stringify(events));
+      return { ...body, id: eventId };
+    }
+    if (method === 'DELETE') {
+      events = events.filter((e: any) => e.id !== eventId);
+      localStorage.setItem('zenith_mock_events', JSON.stringify(events));
+      return { success: true };
+    }
+  }
+
+  if (cleanEndpoint === '/api/events/sync') {
+    localStorage.setItem('zenith_mock_events', JSON.stringify(body.events || []));
+    return { success: true, events: body.events };
+  }
+
+  if (cleanEndpoint === '/api/messages') {
+    if (method === 'POST') {
+      const messages = JSON.parse(localStorage.getItem('zenith_mock_messages') || '[]');
+      messages.push(body);
+      localStorage.setItem('zenith_mock_messages', JSON.stringify(messages));
+      return body;
+    }
+  }
+
+  if (cleanEndpoint === '/api/messages/clear') {
+    localStorage.setItem('zenith_mock_messages', JSON.stringify([]));
+    return { success: true };
+  }
+
+  if (cleanEndpoint === '/api/wellness') {
+    localStorage.setItem('zenith_mock_wellness', JSON.stringify(body));
+    return body;
+  }
+
+  if (cleanEndpoint === '/api/auth/profile') {
+    localStorage.setItem('zenith_mock_user_profile', JSON.stringify(body));
+    return body;
+  }
+
+  return null;
+}
+
+async function apiCall(endpoint: string, method = 'GET', body: any = null): Promise<any> {
   const token = localStorage.getItem('zenith_token');
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -270,14 +482,25 @@ async function apiCall(endpoint: string, method = 'GET', body: any = null) {
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, options);
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'API request failed');
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, options);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'API request failed');
+    }
+    return await response.json();
+  } catch (error: any) {
+    if (error.name === 'TypeError' || error.message.includes('Failed to fetch') || error.message.includes('network') || error.message.includes('API request failed')) {
+      console.warn(`⚠️ API connection failed (${error.message}). Falling back to local storage client-side DB.`);
+      try {
+        useStore.setState({ isDemoMode: true });
+      } catch (e) {}
+      return handleClientFallback(endpoint, method, body);
+    }
+    throw error;
   }
-
-  return response.json();
 }
+
 
 export const useStore = create<StoreState>()(
   persist(
@@ -298,6 +521,7 @@ export const useStore = create<StoreState>()(
       user: null,
       isAuthenticated: !!localStorage.getItem('zenith_token'),
       token: localStorage.getItem('zenith_token') || null,
+      isDemoMode: false,
       geminiApiKey: '',
       isGenerating: false,
       activeStreamTimer: null,
@@ -1225,3 +1449,13 @@ When scheduling or planning the week, you MUST first print out a beautiful day-b
     }
   )
 );
+
+fetch(`${API_URL}/api/auth/config`)
+  .then((res) => {
+    if (!res.ok) throw new Error();
+    useStore.setState({ isDemoMode: false });
+  })
+  .catch(() => {
+    useStore.setState({ isDemoMode: true });
+  });
+
