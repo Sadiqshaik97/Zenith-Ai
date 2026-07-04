@@ -45,8 +45,6 @@ interface StoreState {
   // Assistant Actions
   sendMessage: (text: string) => Promise<void>;
   clearChat: () => Promise<void>;
-  geminiApiKey: string;
-  setGeminiApiKey: (key: string) => void;
   isGenerating: boolean;
   activeStreamTimer: any | null;
   stopGenerating: () => void;
@@ -332,8 +330,7 @@ function handleClientFallback(endpoint: string, method: string, body: any): any 
       habits,
       events,
       messages,
-      wellnessMetrics: wellnessMetrics || { focusTimeMinutes: 0, focusTargetMinutes: 240 },
-      geminiApiKey: localStorage.getItem('zenith_gemini_key') || ''
+      wellnessMetrics: wellnessMetrics || { focusTimeMinutes: 0, focusTargetMinutes: 240 }
     };
   }
 
@@ -490,7 +487,17 @@ async function apiCall(endpoint: string, method = 'GET', body: any = null): Prom
     }
     return await response.json();
   } catch (error: any) {
-    if (error.name === 'TypeError' || error.message.includes('Failed to fetch') || error.message.includes('network') || error.message.includes('API request failed')) {
+    const isNetworkError = 
+      error.name === 'TypeError' || 
+      error.name === 'NetworkError' ||
+      error.message.toLowerCase().includes('fetch') ||
+      error.message.toLowerCase().includes('network') ||
+      error.message.toLowerCase().includes('failed') ||
+      error.message.toLowerCase().includes('load') ||
+      error.message.toLowerCase().includes('cors') ||
+      error.message.includes('API request failed');
+
+    if (isNetworkError) {
       console.warn(`⚠️ API connection failed (${error.message}). Falling back to local storage client-side DB.`);
       try {
         useStore.setState({ isDemoMode: true });
@@ -518,11 +525,17 @@ export const useStore = create<StoreState>()(
         }
       ],
       wellnessMetrics: defaultWellnessMetrics,
-      user: null,
-      isAuthenticated: !!localStorage.getItem('zenith_token'),
-      token: localStorage.getItem('zenith_token') || null,
+      user: {
+        uid: 'default_user',
+        name: 'Zenith User',
+        email: 'user@zenith.ai',
+        avatarUrl: 'https://api.dicebear.com/7.x/adventurer/svg?seed=ZenithUser',
+        tier: 'Pro',
+        createdAt: new Date().toISOString()
+      },
+      isAuthenticated: true,
+      token: 'mock_token',
       isDemoMode: false,
-      geminiApiKey: '',
       isGenerating: false,
       activeStreamTimer: null,
       isUpgradeModalOpen: false,
@@ -797,8 +810,6 @@ export const useStore = create<StoreState>()(
         }
       },
 
-      setGeminiApiKey: (key) => set({ geminiApiKey: key }),
-
       // Assistant Chat Actions
       sendMessage: async (text) => {
         const userMsg: Message = {
@@ -1016,167 +1027,236 @@ export const useStore = create<StoreState>()(
           set({ activeStreamTimer: streamTimer });
         };
 
-        const currentApiKey = useStore.getState().geminiApiKey;
         const currentUser = useStore.getState().user;
         const currentTasks = useStore.getState().tasks;
 
         let replyText = '';
 
-        if (currentApiKey && currentApiKey.trim() !== '' && currentApiKey !== 'mock_key') {
-          const thinkingId = 'm_thinking_' + Date.now();
-          const thinkingMsg: Message = {
-            id: thinkingId,
-            sender: 'ai',
-            text: 'Aura is formulating a response...',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
+        const thinkingId = 'm_thinking_' + Date.now();
+        const thinkingMsg: Message = {
+          id: thinkingId,
+          sender: 'ai',
+          text: 'Aura is formulating a response...',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
 
-          set((state) => ({
-            messages: [...state.messages, thinkingMsg]
-          }));
+        set((state) => ({
+          messages: [...state.messages, thinkingMsg]
+        }));
 
-          try {
-            // Clean and map previous messages to build conversation history
-            const history = useStore.getState().messages
-              .filter((m) => m.id !== thinkingId)
-              .slice(-12) // Keep the last 12 messages to balance context and rate limits
-              .map((msg) => {
-                let cleanText = msg.text;
-                // Strip action code blocks from assistant's history to avoid confusing the model
-                const jsonIndex = cleanText.indexOf('```');
-                if (jsonIndex !== -1) {
-                  cleanText = cleanText.substring(0, jsonIndex).trim();
-                }
-                return {
-                  role: msg.sender === 'user' ? 'user' : 'model',
-                  parts: [{ text: cleanText || '...' }]
-                };
-              });
+        try {
+          // Clean and map previous messages to build conversation history with strictly alternating roles
+          const rawHistory = useStore.getState().messages
+            .filter((m) => m.id !== thinkingId && !m.id.startsWith('m_thinking_'))
+            .slice(-12); // Keep the last 12 messages to balance context and rate limits
 
-            // Append the new user query to the history
-            history.push({
-              role: 'user',
-              parts: [{ text: text }]
-            });
-
-            // Build system prompt with current user statistics and guidelines
-            const systemPrompt = `You are Aura, the AI productivity coach for Zenith AI. You help the user manage their tasks, goals, habits, and schedule.
+          // Build system prompt with current user statistics and guidelines
+          const systemPrompt = `You are Aura, the AI productivity coach for Zenith AI. You help the user manage their tasks, goals, habits, and schedule.
 The user's name is "${currentUser?.name || 'Guest'}" and email is "${currentUser?.email || 'guest@zenith.ai'}".
 Current date is ${new Date().toISOString().split('T')[0]}.
 
-Here are the current tasks in the system:
-${JSON.stringify(currentTasks.map(t => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, deadline: t.deadline, effort: t.effort })))}
+Here are the current tasks in the system (including their subtasks):
+${JSON.stringify(currentTasks.map(t => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, deadline: t.deadline, effort: t.effort, description: t.description, tags: t.tags, subtasks: t.subtasks })))}
 
 Here are the current habits in the system:
 ${JSON.stringify(useStore.getState().habits.map(h => ({ id: h.id, name: h.name, streak: h.streak, completedToday: h.completedToday })))}
 
-If the user asks to perform operations (like adding a task, completing/marking a task as done, deleting a task, creating a goal/habit, toggling a habit, or running the scheduler/optimizing time blocks), you MUST append a JSON array at the very end of your response inside a \`\`\`actions block. The array should contain one or more of these action objects:
+Here are the current goals in the system:
+${JSON.stringify(useStore.getState().goals.map(g => ({ id: g.id, title: g.title, category: g.category, progress: g.progress, targetDate: g.targetDate })))}
+
+If the user asks to perform operations (like adding, editing, completing, or deleting a task, creating/modifying/deleting a goal or habit, toggling a habit, managing subtasks, or running the scheduler/optimizing time blocks), you MUST append a JSON array at the very end of your response inside a \`\`\`actions block. The array should contain one or more of these action objects:
 - To add a task:
   { "action": "ADD_TASK", "title": "Task title", "priority": "High"|"Medium"|"Low", "deadline": "YYYY-MM-DD", "effort": estimated_hours, "tags": ["CategoryName"], "description": "Short description text" }
+- To update/edit an existing task (specify only fields to update):
+  { "action": "UPDATE_TASK", "taskId": "task_id_from_above", "updates": { "title": "new title", "priority": "High"|"Medium"|"Low", "deadline": "YYYY-MM-DD", "effort": hours, "description": "text", "status": "Todo"|"InProgress"|"Done" } }
 - To mark a task as Done:
   { "action": "COMPLETE_TASK", "taskId": "task_id_from_above" }
 - To delete a task:
   { "action": "DELETE_TASK", "taskId": "task_id_from_above" }
+- To add a subtask under a task:
+  { "action": "ADD_SUBTASK", "taskId": "task_id_from_above", "text": "Subtask title" }
+- To toggle/complete a subtask:
+  { "action": "TOGGLE_SUBTASK", "taskId": "task_id_from_above", "subtaskId": "subtask_id_from_above" }
 - To run the auto-schedule optimizer (plan day/week, schedule tasks, resolve overlaps):
   { "action": "RUN_SCHEDULER" }
 - To add a goal:
   { "action": "ADD_GOAL", "title": "Goal title", "category": "Study"|"Work"|"Health"|"Finance", "targetDate": "YYYY-MM-DD" }
+- To update/edit a goal:
+  { "action": "UPDATE_GOAL", "goalId": "goal_id_from_above", "updates": { "title": "new title", "category": "Study"|"Work"|"Health"|"Finance", "targetDate": "YYYY-MM-DD", "progress": number } }
+- To delete a goal:
+  { "action": "DELETE_GOAL", "goalId": "goal_id_from_above" }
 - To add a habit:
   { "action": "ADD_HABIT", "name": "Habit name" }
 - To toggle/check off a habit:
   { "action": "TOGGLE_HABIT", "habitId": "habit_id_from_above" }
+- To delete a habit:
+  { "action": "DELETE_HABIT", "habitId": "habit_id_from_above" }
 
 When scheduling or planning the week, you MUST first print out a beautiful day-by-day markdown schedule table or list proposing the allocation of the user's tasks to the weekdays, and then append the RUN_SCHEDULER action. Do not just say you are running the scheduler — print the exact schedule data first so it looks like a real AI assistant planner. Be encouraging, concise, and professional. Do not use markdown inside the action block.`;
 
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentApiKey}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  contents: history,
-                  systemInstruction: {
-                    parts: [
-                      {
-                        text: systemPrompt
-                      }
-                    ]
-                  },
-                  tools: [
-                    {
-                      googleSearch: {}
-                    }
-                  ]
-                })
-              }
-            );
+          const messages = [
+            { role: 'system', content: systemPrompt },
+            ...rawHistory.map((msg) => ({
+              role: msg.sender === 'user' ? 'user' : 'assistant',
+              content: msg.text
+            }))
+          ];
 
-            if (!response.ok) {
-              if (response.status === 429) {
-                throw new Error("429_RATE_LIMIT");
-              }
-              throw new Error(`API Error: ${response.status} ${response.statusText}`);
+          const data = await apiCall('/api/chat', 'POST', { messages });
+          let rawText = data?.text || '';
+
+          if (!rawText) {
+            throw new Error('Empty response from AI assistant backend');
+          }
+
+          let jsonString = '';
+          let matchedRegex: RegExp | null = null;
+          
+          const actionsRegex = /```actions\s*([\s\S]*?)\s*```/;
+          const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/;
+          
+          const actionsMatch = rawText.match(actionsRegex);
+          const jsonBlockMatch = rawText.match(jsonBlockRegex);
+          
+          if (actionsMatch) {
+            jsonString = actionsMatch[1];
+            matchedRegex = actionsRegex;
+          } else if (jsonBlockMatch) {
+            jsonString = jsonBlockMatch[1];
+            matchedRegex = jsonBlockRegex;
+          } else {
+            // Try to find any bracketed array structure containing action objects
+            const arrayRegex = /(\[\s*\{\s*"action"\s*:[\s\S]*?\}\s*\])/;
+            const arrayMatch = rawText.match(arrayRegex);
+            if (arrayMatch) {
+              jsonString = arrayMatch[1];
+              matchedRegex = arrayRegex;
             }
+          }
 
-            const data = await response.json();
-            let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          let rawTextCleaned = rawText;
+          let actionsProcessed = 0;
 
-            if (!rawText) {
-              throw new Error('Empty response from Gemini');
-            }
-
-            let jsonString = '';
-            let matchedRegex: RegExp | null = null;
-            
-            const actionsRegex = /```actions\s*([\s\S]*?)\s*```/;
-            const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/;
-            
-            const actionsMatch = rawText.match(actionsRegex);
-            const jsonBlockMatch = rawText.match(jsonBlockRegex);
-            
-            if (actionsMatch) {
-              jsonString = actionsMatch[1];
-              matchedRegex = actionsRegex;
-            } else if (jsonBlockMatch) {
-              jsonString = jsonBlockMatch[1];
-              matchedRegex = jsonBlockRegex;
-            } else {
-              // Try to find any bracketed array structure containing action objects
-              const arrayRegex = /(\[\s*\{\s*"action"\s*:[\s\S]*?\}\s*\])/;
-              const arrayMatch = rawText.match(arrayRegex);
-              if (arrayMatch) {
-                jsonString = arrayMatch[1];
-                matchedRegex = arrayRegex;
+          if (jsonString && matchedRegex) {
+            try {
+              const cleanedJson = jsonString.trim()
+                .replace(/,\s*([\]}])/g, '$1') // Remove trailing commas
+                .replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1'); // Remove single/multi-line comments
+              
+              const actionsJson = JSON.parse(cleanedJson);
+              const actionsList = Array.isArray(actionsJson) ? actionsJson : [actionsJson];
+              
+              const newTasksList: Task[] = [];
+              for (const [i, act] of actionsList.entries()) {
+                if (act.action === 'ADD_TASK' && act.title) {
+                  const tempTask = {
+                    title: act.title,
+                    description: act.description || `Auto-generated by Aura AI coach`,
+                    deadline: act.deadline || new Date(Date.now() + 86400000).toISOString().split('T')[0],
+                    time: act.time || '12:00',
+                    priority: act.priority || 'Medium',
+                    status: 'Todo' as const,
+                    effort: act.effort || 2,
+                    tags: act.tags || ['AuraAI'],
+                    subtasks: act.subtasks || []
+                  };
+                  const priorityScore = calculatePriorityScore(tempTask);
+                  const finalTask = {
+                    ...tempTask,
+                    id: 'task_' + (Date.now() + i + Math.random()),
+                    priorityScore
+                  };
+                  const savedTask = await apiCall('/api/tasks', 'POST', finalTask);
+                  newTasksList.push(savedTask);
+                  actionsProcessed++;
+                } else if (act.action === 'UPDATE_TASK' && act.taskId && act.updates) {
+                  await useStore.getState().updateTask(act.taskId, act.updates);
+                  actionsProcessed++;
+                } else if (act.action === 'COMPLETE_TASK' && act.taskId) {
+                  await useStore.getState().toggleTask(act.taskId);
+                  actionsProcessed++;
+                } else if (act.action === 'DELETE_TASK' && act.taskId) {
+                  await useStore.getState().deleteTask(act.taskId);
+                  actionsProcessed++;
+                } else if (act.action === 'ADD_SUBTASK' && act.taskId && act.text) {
+                  const targetTask = useStore.getState().tasks.find(t => t.id === act.taskId);
+                  if (targetTask) {
+                    const newSubtask = {
+                      id: 'sub_ai_' + (Date.now() + Math.random()),
+                      text: act.text,
+                      completed: false
+                    };
+                    await useStore.getState().updateTask(act.taskId, {
+                      subtasks: [...targetTask.subtasks, newSubtask]
+                    });
+                    actionsProcessed++;
+                  }
+                } else if (act.action === 'TOGGLE_SUBTASK' && act.taskId && act.subtaskId) {
+                  await useStore.getState().toggleSubtask(act.taskId, act.subtaskId);
+                  actionsProcessed++;
+                } else if (act.action === 'RUN_SCHEDULER') {
+                  await useStore.getState().runAiScheduler();
+                  actionsProcessed++;
+                } else if (act.action === 'ADD_GOAL' && act.title) {
+                  await useStore.getState().addGoal({
+                    title: act.title,
+                    targetDate: act.targetDate || new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0],
+                    progress: 0,
+                    category: act.category || 'Study'
+                  });
+                  actionsProcessed++;
+                } else if (act.action === 'UPDATE_GOAL' && act.goalId && act.updates) {
+                  await useStore.getState().updateGoal(act.goalId, act.updates);
+                  actionsProcessed++;
+                } else if (act.action === 'DELETE_GOAL' && act.goalId) {
+                  await useStore.getState().deleteGoal(act.goalId);
+                  actionsProcessed++;
+                } else if (act.action === 'ADD_HABIT' && act.name) {
+                  await useStore.getState().addHabit(act.name);
+                  actionsProcessed++;
+                } else if (act.action === 'TOGGLE_HABIT' && act.habitId) {
+                  await useStore.getState().toggleHabit(act.habitId);
+                  actionsProcessed++;
+                } else if (act.action === 'DELETE_HABIT' && act.habitId) {
+                  await useStore.getState().deleteHabit(act.habitId);
+                  actionsProcessed++;
+                }
               }
+              
+              if (newTasksList.length > 0) {
+                set((state) => ({
+                  tasks: [...newTasksList, ...state.tasks]
+                }));
+              }
+              
+              rawTextCleaned = rawText.replace(matchedRegex, '').trim() + `\n\n*System: ${actionsProcessed} AI action(s) executed successfully.*`;
+            } catch (e) {
+              console.error('Failed to parse AI action JSON block', e);
             }
+          } else {
+            // Fallback to legacy task format if generated
+            const taskRegex = /```task\s*([\s\S]*?)\s*```/;
+            const match = rawText.match(taskRegex);
 
-            let rawTextCleaned = rawText;
-            let actionsProcessed = 0;
-
-            if (jsonString && matchedRegex) {
+            if (match) {
+              let countAdded = 0;
               try {
-                const cleanedJson = jsonString.trim()
-                  .replace(/,\s*([\]}])/g, '$1') // Remove trailing commas
-                  .replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1'); // Remove single/multi-line comments
-                
-                const actionsJson = JSON.parse(cleanedJson);
-                const actionsList = Array.isArray(actionsJson) ? actionsJson : [actionsJson];
+                const taskJson = JSON.parse(match[1].trim());
+                const tasksToAdd = Array.isArray(taskJson) ? taskJson : [taskJson];
                 
                 const newTasksList: Task[] = [];
-                for (const [i, act] of actionsList.entries()) {
-                  if (act.action === 'ADD_TASK' && act.title) {
+                for (const [i, t] of tasksToAdd.entries()) {
+                  if (t.title) {
                     const tempTask = {
-                      title: act.title,
-                      description: act.description || `Auto-generated by Aura AI coach`,
-                      deadline: act.deadline || new Date(Date.now() + 86400000).toISOString().split('T')[0],
-                      time: act.time || '12:00',
-                      priority: act.priority || 'Medium',
+                      title: t.title,
+                      description: t.description || `Auto-generated by Aura AI (OpenAI) from command: "${text}"`,
+                      deadline: t.deadline || new Date(Date.now() + 86400000).toISOString().split('T')[0],
+                      time: '12:00',
+                      priority: t.priority || 'Medium',
                       status: 'Todo' as const,
-                      effort: act.effort || 2,
-                      tags: act.tags || ['AuraAI'],
-                      subtasks: act.subtasks || []
+                      effort: t.effort || 2,
+                      tags: ['AuraAI'],
+                      subtasks: []
                     };
                     const priorityScore = calculatePriorityScore(tempTask);
                     const finalTask = {
@@ -1186,30 +1266,7 @@ When scheduling or planning the week, you MUST first print out a beautiful day-b
                     };
                     const savedTask = await apiCall('/api/tasks', 'POST', finalTask);
                     newTasksList.push(savedTask);
-                    actionsProcessed++;
-                  } else if (act.action === 'COMPLETE_TASK' && act.taskId) {
-                    await useStore.getState().toggleTask(act.taskId);
-                    actionsProcessed++;
-                  } else if (act.action === 'DELETE_TASK' && act.taskId) {
-                    await useStore.getState().deleteTask(act.taskId);
-                    actionsProcessed++;
-                  } else if (act.action === 'RUN_SCHEDULER') {
-                    await useStore.getState().runAiScheduler();
-                    actionsProcessed++;
-                  } else if (act.action === 'ADD_GOAL' && act.title) {
-                    await useStore.getState().addGoal({
-                      title: act.title,
-                      targetDate: act.targetDate || new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0],
-                      progress: 0,
-                      category: act.category || 'Study'
-                    });
-                    actionsProcessed++;
-                  } else if (act.action === 'ADD_HABIT' && act.name) {
-                    await useStore.getState().addHabit(act.name);
-                    actionsProcessed++;
-                  } else if (act.action === 'TOGGLE_HABIT' && act.habitId) {
-                    await useStore.getState().toggleHabit(act.habitId);
-                    actionsProcessed++;
+                    countAdded++;
                   }
                 }
                 
@@ -1218,70 +1275,20 @@ When scheduling or planning the week, you MUST first print out a beautiful day-b
                     tasks: [...newTasksList, ...state.tasks]
                   }));
                 }
-                
-                rawTextCleaned = rawText.replace(matchedRegex, '').trim() + `\n\n*System: ${actionsProcessed} AI action(s) executed successfully.*`;
+                rawTextCleaned = rawText.replace(taskRegex, '').trim() + `\n\n*System: Created ${countAdded} task(s) successfully.*`;
               } catch (e) {
-                console.error('Failed to parse AI action JSON block', e);
-              }
-            } else {
-              // Fallback to legacy task format if generated
-              const taskRegex = /```task\s*([\s\S]*?)\s*```/;
-              const match = rawText.match(taskRegex);
-
-              if (match) {
-                let countAdded = 0;
-                try {
-                  const taskJson = JSON.parse(match[1].trim());
-                  const tasksToAdd = Array.isArray(taskJson) ? taskJson : [taskJson];
-                  
-                  const newTasksList: Task[] = [];
-                  for (const [i, t] of tasksToAdd.entries()) {
-                    if (t.title) {
-                      const tempTask = {
-                        title: t.title,
-                        description: t.description || `Auto-generated by Aura AI (Gemini) from command: "${text}"`,
-                        deadline: t.deadline || new Date(Date.now() + 86400000).toISOString().split('T')[0],
-                        time: '12:00',
-                        priority: t.priority || 'Medium',
-                        status: 'Todo' as const,
-                        effort: t.effort || 2,
-                        tags: ['AuraAI'],
-                        subtasks: []
-                      };
-                      const priorityScore = calculatePriorityScore(tempTask);
-                      const finalTask = {
-                        ...tempTask,
-                        id: 'task_' + (Date.now() + i + Math.random()),
-                        priorityScore
-                      };
-                      const savedTask = await apiCall('/api/tasks', 'POST', finalTask);
-                      newTasksList.push(savedTask);
-                      countAdded++;
-                    }
-                  }
-                  
-                  if (newTasksList.length > 0) {
-                    set((state) => ({
-                      tasks: [...newTasksList, ...state.tasks]
-                    }));
-                  }
-                  rawTextCleaned = rawText.replace(taskRegex, '').trim() + `\n\n*System: Created ${countAdded} task(s) successfully.*`;
-                } catch (e) {
-                  console.error('Failed to parse task JSON block', e);
-                }
+                console.error('Failed to parse task JSON block', e);
               }
             }
-
-            replyText = rawTextCleaned;
-
-          } catch (error: any) {
-            console.error('Gemini API call failed:', error);
-            if (error.message === "429_RATE_LIMIT" || error.message.includes("429")) {
-              await runOfflineFallback(true);
-              return;
-            }
-            replyText = `⚠️ I encountered an error communicating with Gemini: ${error?.message || 'Connection failed'}. Please check your API Key and network connection.`;
           }
+
+          replyText = rawTextCleaned;
+
+        } catch (error: any) {
+          console.error('AI Proxy request failed, running local offline fallback:', error);
+          await runOfflineFallback(false);
+          return;
+        }
 
           const aiMsgId = 'm_ai_' + Date.now();
           const aiMsg: Message = {
@@ -1322,10 +1329,6 @@ When scheduling or planning the week, you MUST first print out a beautiful day-b
           }, 35);
 
           set({ activeStreamTimer: streamTimer });
-
-        } else {
-          await runOfflineFallback(false);
-        }
       },
 
       clearChat: async () => {
@@ -1431,7 +1434,7 @@ When scheduling or planning the week, you MUST first print out a beautiful day-b
               }
             ],
             wellnessMetrics: data.wellnessMetrics || defaultWellnessMetrics,
-            geminiApiKey: data.geminiApiKey || useStore.getState().geminiApiKey || ''
+            user: data.user || useStore.getState().user || null
           });
         } catch (error) {
           console.error('Failed to initialize data from server:', error);
@@ -1443,8 +1446,7 @@ When scheduling or planning the week, you MUST first print out a beautiful day-b
       partialize: (state) => ({ 
         token: state.token, 
         isAuthenticated: state.isAuthenticated, 
-        user: state.user,
-        geminiApiKey: state.geminiApiKey 
+        user: state.user
       }), // Only persist authentication settings locally to prevent stale client-data overrides
     }
   )

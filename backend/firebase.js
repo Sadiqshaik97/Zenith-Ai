@@ -125,7 +125,20 @@ class MockCollection {
 
   where(field, op, value) {
     const self = this;
-    return {
+    const queryObj = {
+      limit(n) {
+        return {
+          async get() {
+            const res = await queryObj.get();
+            const docs = res.docs.slice(0, n);
+            return {
+              docs,
+              forEach: (callback) => docs.forEach(doc => callback(doc)),
+              empty: docs.length === 0,
+            };
+          }
+        };
+      },
       async get() {
         const allData = self._readData();
         const collectionData = allData[self.name] || {};
@@ -151,15 +164,145 @@ class MockCollection {
         };
       }
     };
+    return queryObj;
+  }
+}
+
+class SmartCollectionWrapper {
+  constructor(name, parentDocPath = '') {
+    this.name = name;
+    this.parentDocPath = parentDocPath;
+    this.fullPath = parentDocPath ? `${parentDocPath}/${name}` : name;
+  }
+
+  getRealCollection() {
+    if (useMock) return null;
+    try {
+      return db.collection(this.fullPath);
+    } catch (e) {
+      console.warn(`⚠️ Error getting real Firestore collection: ${e.message}. Falling back to Mock.`);
+      useMock = true;
+      return null;
+    }
+  }
+
+  async get() {
+    const realCol = this.getRealCollection();
+    if (realCol) {
+      try {
+        return await realCol.get();
+      } catch (err) {
+        console.warn(`⚠️ Firestore get() failed for ${this.fullPath}. Falling back to local Mock DB:`, err.message);
+        useMock = true;
+      }
+    }
+    return new MockCollection(this.fullPath).get();
+  }
+
+  doc(docId) {
+    const self = this;
+    const docPath = `${this.fullPath}/${docId}`;
+    return {
+      id: docId,
+      async get() {
+        const realCol = self.getRealCollection();
+        if (realCol) {
+          try {
+            return await realCol.doc(docId).get();
+          } catch (err) {
+            console.warn(`⚠️ Firestore doc.get() failed for ${docPath}. Falling back to local Mock DB:`, err.message);
+            useMock = true;
+          }
+        }
+        return new MockCollection(self.fullPath).doc(docId).get();
+      },
+      async set(data, options = {}) {
+        const realCol = self.getRealCollection();
+        if (realCol) {
+          try {
+            return await realCol.doc(docId).set(data, options);
+          } catch (err) {
+            console.warn(`⚠️ Firestore doc.set() failed for ${docPath}. Falling back to local Mock DB:`, err.message);
+            useMock = true;
+          }
+        }
+        return new MockCollection(self.fullPath).doc(docId).set(data, options);
+      },
+      async update(data) {
+        const realCol = self.getRealCollection();
+        if (realCol) {
+          try {
+            return await realCol.doc(docId).update(data);
+          } catch (err) {
+            console.warn(`⚠️ Firestore doc.update() failed for ${docPath}. Falling back to local Mock DB:`, err.message);
+            useMock = true;
+          }
+        }
+        return new MockCollection(self.fullPath).doc(docId).update(data);
+      },
+      async delete() {
+        const realCol = self.getRealCollection();
+        if (realCol) {
+          try {
+            return await realCol.doc(docId).delete();
+          } catch (err) {
+            console.warn(`⚠️ Firestore doc.delete() failed for ${docPath}. Falling back to local Mock DB:`, err.message);
+            useMock = true;
+          }
+        }
+        return new MockCollection(self.fullPath).doc(docId).delete();
+      },
+      collection(subName) {
+        return new SmartCollectionWrapper(subName, docPath);
+      }
+    };
+  }
+
+  where(field, op, value) {
+    const self = this;
+    const queryObj = {
+      limit(n) {
+        return {
+          async get() {
+            const realCol = self.getRealCollection();
+            if (realCol) {
+              try {
+                return await realCol.where(field, op, value).limit(n).get();
+              } catch (err) {
+                console.warn(`⚠️ Firestore query.limit.get() failed for ${self.fullPath}. Falling back to local Mock DB:`, err.message);
+                useMock = true;
+              }
+            }
+            const res = await new MockCollection(self.fullPath).where(field, op, value).get();
+            const docs = res.docs.slice(0, n);
+            return {
+              docs,
+              forEach: (callback) => docs.forEach(doc => callback(doc)),
+              empty: docs.length === 0,
+            };
+          }
+        };
+      },
+      async get() {
+        const realCol = self.getRealCollection();
+        if (realCol) {
+          try {
+            return await realCol.where(field, op, value).get();
+          } catch (err) {
+            console.warn(`⚠️ Firestore query.get() failed for ${self.fullPath}. Falling back to local Mock DB:`, err.message);
+            useMock = true;
+          }
+        }
+        return new MockCollection(self.fullPath).where(field, op, value).get();
+      }
+    };
+    return queryObj;
   }
 }
 
 const dbWrapper = {
   collection(name) {
-    if (useMock) {
-      return new MockCollection(name);
-    }
-    return db.collection(name);
+    return new SmartCollectionWrapper(name);
   }
 };
 

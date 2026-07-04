@@ -23,7 +23,6 @@ export default function TopBar({ onToggleMenu }: TopBarProps) {
   
   // Auth state & actions
   const user = useStore((state) => state.user);
-  const logout = useStore((state) => state.logout);
   const updateProfile = useStore((state) => state.updateProfile);
 
   // Edit Profile Form States
@@ -407,15 +406,6 @@ export default function TopBar({ onToggleMenu }: TopBarProps) {
                 className="w-full text-left px-4 py-2.5 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-700 transition-colors cursor-pointer"
               >
                 Profile Settings
-              </button>
-              <button 
-                onClick={() => {
-                  logout();
-                  setShowProfileMenu(false);
-                }}
-                className="w-full text-left px-4 py-2.5 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Log Out
               </button>
             </div>
           )}

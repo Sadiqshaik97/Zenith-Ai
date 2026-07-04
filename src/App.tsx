@@ -9,21 +9,13 @@ import AssistantPage from './pages/AssistantPage';
 import GoalsPage from './pages/GoalsPage';
 import InsightsPage from './pages/InsightsPage';
 import InboxPage from './pages/InboxPage';
-import AuthPage from './pages/AuthPage';
 
 export default function App() {
-  const isAuthenticated = useStore((state) => state.isAuthenticated);
   const initializeData = useStore((state) => state.initializeData);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      initializeData();
-    }
-  }, [isAuthenticated, initializeData]);
-
-  if (!isAuthenticated) {
-    return <AuthPage />;
-  }
+    initializeData();
+  }, [initializeData]);
 
   return (
     <BrowserRouter>

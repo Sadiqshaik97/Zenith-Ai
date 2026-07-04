@@ -25,7 +25,6 @@ export default function TodayPage() {
   const habits = useStore((state) => state.habits);
   const events = useStore((state) => state.events);
   const wellness = useStore((state) => state.wellnessMetrics);
-  const apiKey = useStore((state) => state.geminiApiKey);
   
   const addTask = useStore((state) => state.addTask);
   const toggleTask = useStore((state) => state.toggleTask);
@@ -141,7 +140,7 @@ export default function TodayPage() {
     const commandKeywords = ['add', 'create', 'new', 'schedule', 'plan', 'complete', 'done', 'delete', 'remove', 'remind', 'optimize', 'solve'];
     const isCommand = commandKeywords.some(kw => lower.startsWith(kw) || lower.includes(' ' + kw + ' '));
 
-    if (apiKey && apiKey !== 'mock_key' && isCommand) {
+    if (isCommand) {
       // Redirect to Aura Assistant
       navigate('/assistant');
       setTimeout(() => {

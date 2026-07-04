@@ -9,6 +9,25 @@ router.get('/init', authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;
 
+    // Load or create default user profile
+    const userDoc = await db.collection('users').doc(userId).get();
+    let userProfile;
+    if (!userDoc.exists) {
+      userProfile = {
+        uid: userId,
+        name: 'Zenith User',
+        email: 'user@zenith.ai',
+        avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=ZenithUser`,
+        tier: 'Pro',
+        createdAt: new Date().toISOString()
+      };
+      await db.collection('users').doc(userId).set(userProfile);
+    } else {
+      const userData = userDoc.data();
+      const { passwordHash: _passwordHash, ...profile } = userData;
+      userProfile = profile;
+    }
+
     // Load all user subcollections in parallel
     const [tasksSnap, goalsSnap, habitsSnap, eventsSnap, messagesSnap, wellnessSnap] = await Promise.all([
       db.collection('users').doc(userId).collection('tasks').get(),
@@ -45,6 +64,7 @@ router.get('/init', authMiddleware, async (req, res) => {
       events,
       messages,
       wellnessMetrics,
+      user: userProfile,
       geminiApiKey: process.env.GEMINI_API_KEY || ''
     });
   } catch (error) {
@@ -284,7 +304,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
     delete updates.email;
     delete updates.createdAt;
     
-    await db.collection('users').doc(req.userId).update(updates);
+    await db.collection('users').doc(req.userId).set(updates, { merge: true });
     
     const userDoc = await db.collection('users').doc(req.userId).get();
     const { passwordHash: _passwordHash, ...userProfile } = userDoc.data();
@@ -293,6 +313,67 @@ router.put('/profile', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Update Profile Error:', error);
     res.status(500).json({ message: 'Failed to update user profile.' });
+  }
+});
+
+// AI ASSISTANT CHAT PROXY
+router.post('/chat', authMiddleware, async (req, res) => {
+  try {
+    const { messages } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ message: 'Messages array is required.' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey || apiKey.trim() === '') {
+      console.warn('⚠️ Server-side GEMINI_API_KEY is not configured.');
+      return res.status(200).json({
+        text: `⚠️ **Gemini API Key is not configured on the server.**\n\nPlease add \`GEMINI_API_KEY=your_key\` to your backend \`.env\` file to enable the real AI daily planner assistant.`
+      });
+    }
+
+    // Format OpenAI-style messages array to Google Gemini structure
+    const systemMessage = messages.find(m => m.role === 'system');
+    const otherMessages = messages.filter(m => m.role !== 'system');
+
+    const contents = otherMessages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+
+    const payload = {
+      contents
+    };
+
+    if (systemMessage) {
+      payload.systemInstruction = {
+        parts: [{ text: systemMessage.content }]
+      };
+    }
+
+    // Call Gemini API
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.error('Gemini Server Error:', errText);
+      throw new Error(`HTTP ${response.status} ${response.statusText} - ${errText}`);
+    }
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    res.status(200).json({ text });
+  } catch (error) {
+    console.error('Backend Gemini Proxy Error:', error);
+    res.status(500).json({ message: `AI Assistant error: ${error.message}` });
   }
 });
 
