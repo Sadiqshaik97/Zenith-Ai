@@ -18,7 +18,7 @@ export default function App() {
   }, [initializeData]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<TodayPage />} />
